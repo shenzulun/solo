@@ -22,6 +22,12 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.core.Appender;
+import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.StringLayout;
+import org.apache.logging.log4j.core.appender.WriterAppender;
+import org.apache.logging.log4j.core.config.Configuration;
+import org.apache.logging.log4j.core.layout.PatternLayout;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.event.EventManager;
 import org.b3log.latke.http.BaseServer;
@@ -34,7 +40,6 @@ import org.b3log.latke.util.Stopwatchs;
 import org.b3log.latke.util.Strings;
 import org.b3log.solo.event.B3ArticleSender;
 import org.b3log.solo.event.B3ArticleUpdater;
-import org.b3log.solo.event.B3CommentSender;
 import org.b3log.solo.event.PluginRefresher;
 import org.b3log.solo.processor.*;
 import org.b3log.solo.processor.console.*;
@@ -43,11 +48,14 @@ import org.b3log.solo.service.*;
 import org.b3log.solo.util.Markdowns;
 import org.json.JSONObject;
 
+import java.io.StringWriter;
+import java.util.concurrent.atomic.AtomicInteger;
+
 /**
  * Server.
  *
  * @author <a href="http://88250.b3log.org">Liang Ding</a>
- * @version 3.0.0.1, Feb 21, 2020
+ * @version 3.0.1.4, Apr 2, 2020
  * @since 1.2.0
  */
 public final class Server extends BaseServer {
@@ -60,7 +68,40 @@ public final class Server extends BaseServer {
     /**
      * Solo version.
      */
-    public static final String VERSION = "3.9.0";
+    public static final String VERSION = "4.0.0";
+
+    /**
+     * In-Memory tail logger writer.
+     */
+    public static final TailStringWriter TAIL_LOGGER_WRITER = new TailStringWriter();
+
+    /**
+     * Initializes In-Memory logger. 后台增加服务端日志浏览 https://github.com/88250/solo/issues/91
+     */
+    public static void initInMemoryLogger() {
+        final LoggerContext ctx = (LoggerContext) LogManager.getContext(false);
+        final Configuration config = ctx.getConfiguration();
+        final StringLayout layout = PatternLayout.newBuilder().withPattern("[%-5p]-[%d{yyyy-MM-dd HH:mm:ss}]-[%c:%L]: %m%n").build();
+        final Appender appender = WriterAppender.createAppender(layout, null, TAIL_LOGGER_WRITER, "InMemoryTail", true, true);
+        appender.start();
+        config.addAppender(appender);
+        config.getRootLogger().addAppender(appender, Level.TRACE, null);
+        ctx.updateLoggers();
+    }
+
+    public static class TailStringWriter extends StringWriter {
+
+        private AtomicInteger count = new AtomicInteger();
+
+        @Override
+        public void flush() {
+            super.flush();
+            if (2048 <= count.incrementAndGet()) {
+                super.getBuffer().setLength(0);
+                count.set(0);
+            }
+        }
+    }
 
     /**
      * Main.
@@ -68,43 +109,38 @@ public final class Server extends BaseServer {
      * @param args the specified arguments
      */
     public static void main(final String[] args) {
+        initInMemoryLogger();
         Stopwatchs.start("Booting");
 
         final Options options = new Options();
-        final Option listenPortOpt = Option.builder("lp").longOpt("listen_port").argName("LISTEN_PORT").
-                hasArg().desc("listen port, default is 8080").build();
+        final Option listenPortOpt = Option.builder().longOpt("listen_port").argName("LISTEN_PORT").hasArg().desc("listen port, default is 8080").build();
         options.addOption(listenPortOpt);
 
-        final Option serverSchemeOpt = Option.builder("ss").longOpt("server_scheme").argName("SERVER_SCHEME").
-                hasArg().desc("browser visit protocol, default is http").build();
+        final Option serverSchemeOpt = Option.builder().longOpt("server_scheme").argName("SERVER_SCHEME").hasArg().desc("browser visit protocol, default is http").build();
         options.addOption(serverSchemeOpt);
 
-        final Option serverHostOpt = Option.builder("sh").longOpt("server_host").argName("SERVER_HOST").
-                hasArg().desc("browser visit domain name, default is localhost").build();
+        final Option serverHostOpt = Option.builder().longOpt("server_host").argName("SERVER_HOST").hasArg().desc("browser visit domain name, default is localhost").build();
         options.addOption(serverHostOpt);
 
-        final Option serverPortOpt = Option.builder("sp").longOpt("server_port").argName("SERVER_PORT").
-                hasArg().desc("browser visit port, default is 8080").build();
+        final Option serverPortOpt = Option.builder().longOpt("server_port").argName("SERVER_PORT").hasArg().desc("browser visit port, default is 8080").build();
         options.addOption(serverPortOpt);
 
-        final Option staticServerSchemeOpt = Option.builder("sss").longOpt("static_server_scheme").argName("STATIC_SERVER_SCHEME").
-                hasArg().desc("browser visit static resource protocol, default is http").build();
+        final Option staticServerSchemeOpt = Option.builder().longOpt("static_server_scheme").argName("STATIC_SERVER_SCHEME").hasArg().desc("browser visit static resource protocol, default is http").build();
         options.addOption(staticServerSchemeOpt);
 
-        final Option staticServerHostOpt = Option.builder("ssh").longOpt("static_server_host").argName("STATIC_SERVER_HOST").
-                hasArg().desc("browser visit static resource domain name, default is localhost").build();
+        final Option staticServerHostOpt = Option.builder().longOpt("static_server_host").argName("STATIC_SERVER_HOST").hasArg().desc("browser visit static resource domain name, default is localhost").build();
         options.addOption(staticServerHostOpt);
 
-        final Option staticServerPortOpt = Option.builder("ssp").longOpt("static_server_port").argName("STATIC_SERVER_PORT").
-                hasArg().desc("browser visit static resource port, default is 8080").build();
+        final Option staticServerPortOpt = Option.builder().longOpt("static_server_port").argName("STATIC_SERVER_PORT").hasArg().desc("browser visit static resource port, default is 8080").build();
         options.addOption(staticServerPortOpt);
 
-        final Option runtimeModeOpt = Option.builder("rm").longOpt("runtime_mode").argName("RUNTIME_MODE").
-                hasArg().desc("runtime mode (DEVELOPMENT/PRODUCTION), default is DEVELOPMENT").build();
+        final Option staticPathOpt = Option.builder().longOpt("static_path").argName("STATIC_PATH").hasArg().desc("browser visit static resource path, default is empty").build();
+        options.addOption(staticPathOpt);
+
+        final Option runtimeModeOpt = Option.builder().longOpt("runtime_mode").argName("RUNTIME_MODE").hasArg().desc("runtime mode (DEVELOPMENT/PRODUCTION), default is DEVELOPMENT").build();
         options.addOption(runtimeModeOpt);
 
-        final Option luteHttpOpt = Option.builder("lute").longOpt("lute_http").argName("LUTE_HTTP").
-                hasArg().desc("lute http URL, default is http://localhost:8249, see https://github.com/88250/lute-http for more details").build();
+        final Option luteHttpOpt = Option.builder().longOpt("lute_http").argName("LUTE_HTTP").hasArg().desc("lute http URL, default is http://localhost:8249, see https://github.com/88250/lute-http for more details").build();
         options.addOption(luteHttpOpt);
 
         options.addOption("h", "help", false, "print help for the command");
@@ -170,6 +206,22 @@ public final class Server extends BaseServer {
         String staticServerPort = commandLine.getOptionValue("static_server_port");
         if (null != staticServerPort) {
             Latkes.setLatkeProperty("staticServerPort", staticServerPort);
+        }
+        String staticPath = commandLine.getOptionValue("static_path");
+        if (null != staticPath) {
+            if (StringUtils.equals(staticServerHost, "cdn.jsdelivr.net")) {
+                // 如果使用了 jsDelivr，则需要加上版本号避免 CDN 缓存问题 https://github.com/88250/solo/issues/83
+                // /gh/88250/solo/src/main/resources => /gh/88250/solo@version/src/main/resources
+                if (!StringUtils.contains(staticPath, "@")) {
+                    String gitCommit = System.getenv("git_commit");
+                    if (StringUtils.isBlank(gitCommit)) {
+                        gitCommit = Server.VERSION;
+                    }
+                    LOGGER.log(Level.INFO, "Git commit [" + gitCommit + "]");
+                    staticPath = StringUtils.replace(staticPath, "/solo/", "/solo@" + gitCommit + "/");
+                }
+            }
+            Latkes.setLatkeProperty("staticPath", staticPath);
         }
         String runtimeMode = commandLine.getOptionValue("runtime_mode");
         if (null != runtimeMode) {
@@ -336,8 +388,6 @@ public final class Server extends BaseServer {
             eventManager.registerListener(articleSender);
             final B3ArticleUpdater articleUpdater = beanManager.getReference(B3ArticleUpdater.class);
             eventManager.registerListener(articleUpdater);
-            final B3CommentSender commentSender = beanManager.getReference(B3CommentSender.class);
-            eventManager.registerListener(commentSender);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Register event handlers failed", e);
 
@@ -395,8 +445,7 @@ public final class Server extends BaseServer {
 
         final B3Receiver b3Receiver = beanManager.getReference(B3Receiver.class);
         final Dispatcher.RouterGroup b3Group = Dispatcher.group();
-        b3Group.router().post().put().uri("/apis/symphony/article").handler(b3Receiver::postArticle).
-                put("/apis/symphony/comment", b3Receiver::addComment);
+        b3Group.router().post().put().uri("/apis/symphony/article").handler(b3Receiver::postArticle);
 
         final BlogProcessor blogProcessor = beanManager.getReference(BlogProcessor.class);
         final Dispatcher.RouterGroup blogGroup = Dispatcher.group();
@@ -569,6 +618,7 @@ public final class Server extends BaseServer {
         otherConsoleGroup.middlewares(consoleAdminAuthMidware::handle);
         otherConsoleGroup.delete("/console/archive/unused", otherConsole::removeUnusedArchives).
                 delete("/console/tag/unused", otherConsole::removeUnusedTags);
+        otherConsoleGroup.get("/console/log", otherConsole::getLog);
 
         final UserConsole userConsole = beanManager.getReference(UserConsole.class);
         final Dispatcher.RouterGroup userConsoleGroup = Dispatcher.group();

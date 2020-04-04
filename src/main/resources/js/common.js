@@ -120,6 +120,8 @@ window.Util = {
           Util.uvstat.renderStat()
           Util.uvstat.renderCmtStat(
             window.utilOptions && window.utilOptions.cmtCountCB)
+          // 看板娘背景
+          soloKanbanniang && soloKanbanniang.bgChange()
           cb && cb()
         },
       })
@@ -305,21 +307,21 @@ window.Util = {
   loadVditor: function (cb) {
     $.ajax({
       method: 'GET',
-      url: 'https://cdn.jsdelivr.net/npm/vditor@2.2.13/dist/index.min.js',
+      url: 'https://cdn.jsdelivr.net/npm/vditor@3.0.8/dist/index.min.js',
       dataType: 'script',
       cache: true,
       success: () => {
         Util.init(window.utilOptions)
         if (cb) {
-          cb();
+          cb()
         }
       },
     })
-  }
+  },
 };
 
 (() => {
   if (typeof Vditor === 'undefined') {
-    Util.loadVditor();
+    Util.loadVditor()
   }
 })()

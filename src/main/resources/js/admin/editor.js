@@ -64,7 +64,9 @@ $.extend(SoloEditor.prototype, {
 
     const options = {
       typewriterMode: this.conf.typewriterMode,
-      cache: true,
+      cache: {
+        enable: true,
+      },
       tab: '\t',
       preview: {
         delay: 500,
@@ -110,7 +112,7 @@ $.extend(SoloEditor.prototype, {
         'list',
         'check',
         'upload',
-        'wysiwyg',
+        'edit-mode',
         'preview',
         'fullscreen',
         'help',
